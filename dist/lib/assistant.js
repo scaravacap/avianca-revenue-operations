@@ -86,17 +86,56 @@ var DemoProvider = class {
 		};
 	}
 };
-var GenieProviderStub = class {
+var GenieProvider = class {
 	constructor() {
-		this.nombre = "Genie (deshabilitado)";
+		this.nombre = "Genie (espacio Avianca Revenue Operations)";
 		this.modo = "genie";
+		this.respaldo = new DemoProvider();
 	}
-	ask() {
-		return Promise.resolve({
-			disponible: false,
-			texto: "Proveedor Genie deshabilitado en este despliegue. Se activa con ASSISTANT_PROVIDER=genie.",
-			fuente: "config"
-		});
+	async ask(pregunta, appkit) {
+		if (!appkit.genie) return this.respaldo.ask(pregunta, appkit);
+		let texto = "";
+		let parafrasis = "";
+		let sql;
+		let tabla;
+		let error;
+		try {
+			for await (const ev of appkit.genie.sendMessage("default", pregunta, void 0, { timeout: 12e4 })) if (ev.type === "error") error = ev.error;
+			else if (ev.type === "message_result") {
+				error = error ?? ev.message?.error;
+				for (const att of ev.message?.attachments ?? []) {
+					if (att.text?.content) texto += (texto ? "\n\n" : "") + att.text.content;
+					if (att.query?.description) parafrasis = att.query.description;
+					if (att.query?.query) sql = att.query.query;
+				}
+				if (!texto && ev.message?.content) texto = ev.message.content;
+				if (!texto) texto = parafrasis;
+			} else if (ev.type === "query_result") {
+				const cols = ev.data?.manifest?.schema?.columns?.map((c) => c.name) ?? [];
+				const filas = (ev.data?.result?.data_array ?? []).slice(0, 20);
+				if (cols.length > 0) tabla = {
+					columnas: cols,
+					filas
+				};
+			}
+		} catch (err) {
+			error = err.message;
+		}
+		if (error && !texto) {
+			const fb = await this.respaldo.ask(pregunta, appkit);
+			return {
+				...fb,
+				fuente: `${fb.fuente} (Genie no disponible: ${error})`
+			};
+		}
+		if (!texto && !tabla) return this.respaldo.ask(pregunta, appkit);
+		return {
+			disponible: true,
+			texto: texto || "Genie devolvio la tabla de resultados sin texto.",
+			fuente: "Genie sobre avianca_revenue_operations.gold",
+			sql,
+			datos: tabla
+		};
 	}
 };
 var ModelServingProviderStub = class {
@@ -113,10 +152,11 @@ var ModelServingProviderStub = class {
 	}
 };
 function buildAssistant() {
-	const mode = (process.env.ASSISTANT_PROVIDER ?? "demo").toLowerCase();
-	if (mode === "genie") return new GenieProviderStub();
+	const mode = (process.env.ASSISTANT_PROVIDER ?? "auto").toLowerCase();
+	if (mode === "demo") return new DemoProvider();
 	if (mode === "serving") return new ModelServingProviderStub();
-	return new DemoProvider();
+	if (mode === "genie") return new GenieProvider();
+	return process.env.DATABRICKS_GENIE_SPACE_ID ? new GenieProvider() : new DemoProvider();
 }
 
 //#endregion

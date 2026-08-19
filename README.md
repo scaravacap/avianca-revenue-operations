@@ -20,7 +20,7 @@ App en vivo (Free Edition, requiere login de la cuenta): https://avianca-rev-ops
 4. **Simulador what-if.** Mueves el cambio de precio y ves demanda, ocupacion y revenue proyectados con el modelo de elasticidad. Puedes guardar el escenario como propuesta.
 5. **Accion operacional con aprobacion.** Lista de acciones de pricing con su estado; flujo de aprobar o rechazar y luego aplicar. Aqui vive el ciclo analizar, decidir, actuar.
 6. **Alertas.** Anomalias calculadas desde gold y almacenadas en Lakebase (precio bajo o sobre mercado, ocupacion baja, demanda atipica); se reconocen y se cierran.
-7. **Asistente conversacional.** Responde preguntas sobre las rutas. Corre en modo demo determinista con SQL predefinido y contesta "No disponible" cuando faltan datos, en vez de inventar. Trae ganchos documentados y desactivados para Genie y Model Serving.
+7. **Asistente conversacional.** Responde preguntas sobre las rutas en lenguaje natural. Donde el despliegue tiene un espacio Genie configurado, la pregunta va a Genie, que la traduce a SQL sobre las tablas gold, lo ejecuta en el warehouse y devuelve la respuesta con el SQL a la vista. Donde no lo hay, corre un modo demo determinista con SQL predefinido que contesta "No disponible" cuando faltan datos, en vez de inventar. Si Genie falla, la respuesta cae al modo demo en lugar de dejar la pregunta sin contestar.
 
 Ninguna mutacion sale del navegador: todo pasa por la API de Express, se valida con Zod
 y deja una fila en `audit_events`.
@@ -110,12 +110,53 @@ las Declarative Pipelines en este workspace: corren, pero las tablas gold ya son
 del generador como tablas administradas que la app lee, y un pipeline DLT tendria que
 re-adquirirlas y entraria en conflicto de propiedad. Por eso la orquestacion es un Job.
 
+Un detalle al refrescar datos: el plugin de analitica de AppKit cachea el resultado de cada
+consulta por una hora, y el cache es persistente (vive en Lakebase, sobrevive al reinicio de
+la app). Si corren el job y quieren ver los datos nuevos de inmediato, vacien el cache con
+`DELETE FROM appkit.appkit_cache_entries` en la base de la app. Si no, esperen la hora.
+
+## Asistente conectado a Genie
+
+El asistente elige proveedor solo con la variable `DATABRICKS_GENIE_SPACE_ID`: si el
+despliegue la trae, usa Genie; si no, usa el modo demo. El plugin `genie` de AppKit ni
+siquiera se registra cuando la variable falta, asi que un workspace sin espacio Genie
+arranca igual.
+
+La definicion del espacio esta versionada en `config/genie/genie_space.json`: las 5 tablas
+gold, seis preguntas de ejemplo, cuatro pares pregunta-SQL y las instrucciones de negocio
+(que tabla usar para cada metrica, la ventana de 30 dias volados, la tarifa de referencia
+Economy Standard y los umbrales de subir, bajar o mantener). Esas instrucciones son las que
+hacen que Genie aplique las mismas reglas que el motor de pricing de la app.
+
+Para conectarlo en un workspace nuevo:
+
+```bash
+# 1. Crear el espacio con la definicion del repo
+databricks workspace mkdirs /Workspace/Users/<tu-usuario>/genie_spaces
+databricks genie create-space --profile <perfil> --json "{
+  \"warehouse_id\": \"<tu-warehouse>\",
+  \"title\": \"Avianca Revenue Operations\",
+  \"parent_path\": \"/Workspace/Users/<tu-usuario>/genie_spaces\",
+  \"serialized_space\": $(cat config/genie/genie_space.json | jq -c '.' | jq -Rs '.')
+}"
+
+# 2. Poner el space_id devuelto en la variable genie_space_id del target y desplegar
+databricks bundle deploy -t <target> --profile <perfil>
+databricks bundle run app -t <target> --profile <perfil>
+```
+
+El target `azure` de `databricks.yml` ya trae este cableado y sirve de ejemplo: suma el
+espacio como recurso de la app (para que el Service Principal reciba `CAN_RUN`) y declara
+las variables de entorno en el propio target, no en `app.yaml`, porque ese archivo lo
+comparten todos los despliegues.
+
 ## Permisos requeridos (Service Principal de la app)
 
 - `USE CATALOG` y `USE SCHEMA` sobre `avianca_revenue_operations` y su schema `gold`.
 - `SELECT` sobre las 5 tablas de `gold`.
 - `CAN_USE` sobre el SQL Warehouse.
 - `CAN_CONNECT_AND_CREATE` sobre el recurso Lakebase (para crear el schema `revops` y sus tablas).
+- `CAN_RUN` sobre el espacio Genie, solo en los despliegues que conectan el asistente a Genie.
 
 Estan declarados en `databricks.yml` con su campo `permission`, asi el SP los recibe en el deploy.
 

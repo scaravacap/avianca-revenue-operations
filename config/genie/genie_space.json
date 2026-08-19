@@ -1,0 +1,96 @@
+{
+  "version": 2,
+  "config": {
+    "sample_questions": [
+      { "id": "10000000000000000000000000000001", "question": ["Cuales rutas deberiamos subir de precio?"] },
+      { "id": "10000000000000000000000000000002", "question": ["Cual es la ocupacion de BOG-MIA en los ultimos 30 dias?"] },
+      { "id": "10000000000000000000000000000003", "question": ["Que rutas estan por encima de la mediana de precio de la competencia?"] },
+      { "id": "10000000000000000000000000000004", "question": ["Cual es el revenue total de la red en los ultimos 30 dias?"] },
+      { "id": "10000000000000000000000000000005", "question": ["Que ruta tiene el mayor attach rate de ancillary?"] },
+      { "id": "10000000000000000000000000000006", "question": ["Como va la curva de reserva de BOG-SCL por dias a la salida?"] }
+    ]
+  },
+  "data_sources": {
+    "tables": [
+      { "identifier": "avianca_revenue_operations.gold.ancillaries" },
+      { "identifier": "avianca_revenue_operations.gold.competitor_fares" },
+      { "identifier": "avianca_revenue_operations.gold.current_fares" },
+      { "identifier": "avianca_revenue_operations.gold.flights" },
+      { "identifier": "avianca_revenue_operations.gold.route_demand" }
+    ]
+  },
+  "instructions": {
+    "example_question_sqls": [
+      {
+        "id": "20000000000000000000000000000001",
+        "question": ["Cuales rutas deberiamos subir de precio?"],
+        "sql": [
+          "WITH occ AS (\n",
+          "  SELECT ruta_id, AVG(load_factor) AS ocupacion\n",
+          "  FROM avianca_revenue_operations.gold.flights\n",
+          "  WHERE estado = 'Volado' AND dias_a_salida >= -30\n",
+          "  GROUP BY ruta_id\n",
+          "),\n",
+          "mine AS (\n",
+          "  SELECT ruta_id, tarifa_actual_usd AS tarifa_propia\n",
+          "  FROM avianca_revenue_operations.gold.current_fares\n",
+          "  WHERE cabina = 'Economy' AND clase_tarifa = 'Standard'\n",
+          "),\n",
+          "comp AS (\n",
+          "  SELECT ruta_id, MEDIAN(tarifa_competidor_usd) AS comp_mediana\n",
+          "  FROM avianca_revenue_operations.gold.competitor_fares\n",
+          "  GROUP BY ruta_id\n",
+          ")\n",
+          "SELECT o.ruta_id, ROUND(o.ocupacion, 3) AS ocupacion, m.tarifa_propia, ROUND(c.comp_mediana, 2) AS comp_mediana,\n",
+          "       ROUND((m.tarifa_propia - c.comp_mediana) / c.comp_mediana * 100, 1) AS brecha_pct\n",
+          "FROM occ o JOIN mine m USING (ruta_id) JOIN comp c USING (ruta_id)\n",
+          "WHERE o.ocupacion >= 0.85 AND (m.tarifa_propia - c.comp_mediana) / c.comp_mediana * 100 <= -5\n",
+          "ORDER BY o.ocupacion DESC"
+        ]
+      },
+      {
+        "id": "20000000000000000000000000000002",
+        "question": ["Cual es la ocupacion de una ruta en los ultimos 30 dias?"],
+        "sql": [
+          "SELECT ruta_id, ROUND(AVG(load_factor), 3) AS ocupacion\n",
+          "FROM avianca_revenue_operations.gold.flights\n",
+          "WHERE estado = 'Volado' AND dias_a_salida >= -30 AND ruta_id = 'BOG-MIA'\n",
+          "GROUP BY ruta_id"
+        ]
+      },
+      {
+        "id": "20000000000000000000000000000003",
+        "question": ["Cual es el revenue total de la red en los ultimos 30 dias?"],
+        "sql": [
+          "SELECT ROUND(SUM(revenue_total_usd), 2) AS revenue_usd,\n",
+          "       ROUND(AVG(load_factor), 3) AS load_factor_promedio\n",
+          "FROM avianca_revenue_operations.gold.flights\n",
+          "WHERE estado = 'Volado' AND dias_a_salida >= -30"
+        ]
+      },
+      {
+        "id": "20000000000000000000000000000004",
+        "question": ["Como va la curva de reserva de una ruta por dias a la salida?"],
+        "sql": [
+          "SELECT dias_a_salida, ROUND(AVG(load_factor), 3) AS load_factor\n",
+          "FROM avianca_revenue_operations.gold.flights\n",
+          "WHERE ruta_id = 'BOG-SCL' AND dias_a_salida BETWEEN 0 AND 60\n",
+          "GROUP BY dias_a_salida ORDER BY dias_a_salida DESC"
+        ]
+      }
+    ],
+    "text_instructions": [
+      {
+        "id": "30000000000000000000000000000001",
+        "content": [
+          "Contexto. Eres el asistente de Revenue Management de rutas de Avianca. Respondes sobre demanda, ocupacion, revenue y precio propio contra el de la competencia. Todos los montos estan en USD. Si un dato no esta en las tablas, dilo claramente en vez de estimarlo.\n",
+          "Semantica de fechas. En gold.flights, dias_a_salida menor que 0 significa que el vuelo ya volo (estado 'Volado'); mayor o igual a 0 significa que sigue abierto a la venta. Para metricas historicas filtra siempre estado = 'Volado' AND dias_a_salida >= -30, que es la ventana estandar de 30 dias volados. Para curva de reserva y vuelos futuros usa dias_a_salida >= 0.\n",
+          "Que tabla usar. Ocupacion, revenue, RASK y yield salen de gold.flights. La tarifa propia sale de gold.current_fares y la referencia comparable es siempre cabina 'Economy' y clase_tarifa 'Standard'. El precio de mercado sale de la MEDIAN de gold.competitor_fares por ruta. Demanda, busquedas, reservas, pace y forecast salen de gold.route_demand. Attach rate y revenue por pasajero de ancillary salen de gold.ancillaries.\n",
+          "Definiciones. Ocupacion (load factor) es asientos_vendidos sobre capacidad, ya calculado en la columna load_factor. Brecha vs mercado es (tarifa_propia - mediana_competidor) / mediana_competidor por 100: negativa significa que estamos mas baratos que el mercado. RASK es revenue total sobre asientos-kilometro ofrecidos (capacidad por distancia_km).\n",
+          "Reglas de pricing del negocio. Recomendar SUBIR cuando la ocupacion es mayor o igual a 85% y la brecha es menor o igual a -5% (vamos llenos y baratos). Recomendar BAJAR cuando la ocupacion es menor o igual a 65% y la brecha es mayor o igual a +5% (vamos vacios y caros). En cualquier otro caso, MANTENER. Cuando te pregunten que rutas subir o bajar, aplica exactamente estos umbrales.\n",
+          "Estilo de respuesta. Responde en espanol, directo y con la cifra primero. Redondea porcentajes a un decimal y montos a dolares enteros. Cuando compares precios, muestra la tarifa propia y la mediana del competidor lado a lado. No recomiendes cambios de precio sin mostrar la ocupacion y la brecha que los sustentan.\n"
+        ]
+      }
+    ]
+  }
+}

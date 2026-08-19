@@ -114,7 +114,14 @@ export interface AssistantAnswer {
   disponible: boolean;
   texto: string;
   fuente: string;
+  sql?: string;
   datos?: unknown;
+}
+
+export interface AssistantInfo {
+  proveedor: string;
+  modo: string;
+  espacioGenie: string | null;
 }
 
 export interface Whoami {
@@ -170,6 +177,7 @@ export const api = {
     req<Alert>(`/api/alerts/${id}`, { method: 'PATCH', body: JSON.stringify({ accion }) }),
   audit: (limit = 50) => req<AuditEvent[]>(`/api/audit?limit=${limit}`),
   ask: (pregunta: string) => req<AssistantAnswer>('/api/assistant', { method: 'POST', body: JSON.stringify({ pregunta }) }),
+  assistantInfo: () => req<AssistantInfo>('/api/assistant/info'),
 };
 
 export const numish = (v: string | number | null | undefined): number => {

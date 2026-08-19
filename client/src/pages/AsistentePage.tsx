@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Badge,
   Button,
@@ -16,6 +16,7 @@ interface Turno {
   texto: string;
   fuente?: string;
   disponible?: boolean;
+  sql?: string;
 }
 
 let turnoSeq = 0;
@@ -28,12 +29,18 @@ const SUGERENCIAS = [
   'Que rutas tienen alertas abiertas',
 ];
 
+const SALUDO_DEMO =
+  'Hola. Soy el asistente de revenue en modo demo: respondo con consultas fijas sobre las tablas gold. Si un dato no existe, te digo "No disponible" en vez de inventarlo.';
+const SALUDO_GENIE =
+  'Hola. Estoy conectado a Genie sobre las tablas gold de avianca_revenue_operations. Preguntame en lenguaje natural por demanda, ocupacion, revenue o precio contra la competencia, y te muestro tambien el SQL que Genie genero.';
+
 export function AsistentePage() {
+  const [modo, setModo] = useState('demo');
   const [turnos, setTurnos] = useState<Turno[]>([
     {
       id: nuevoId(),
       rol: 'asistente',
-      texto: 'Hola. Soy el asistente de revenue en modo demo: respondo con consultas fijas sobre las tablas gold. Si un dato no existe, te digo "No disponible" en vez de inventarlo.',
+      texto: SALUDO_DEMO,
       fuente: 'demo',
       disponible: true,
     },
@@ -41,6 +48,21 @@ export function AsistentePage() {
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const finRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    void api
+      .assistantInfo()
+      .then((info) => {
+        if (!vivo || info.modo === 'demo') return;
+        setModo(info.modo);
+        setTurnos((t) => t.map((x, i) => (i === 0 ? { ...x, texto: SALUDO_GENIE, fuente: info.modo } : x)));
+      })
+      .catch(() => undefined);
+    return () => {
+      vivo = false;
+    };
+  }, []);
 
   const preguntar = async (pregunta: string) => {
     const q = pregunta.trim();
@@ -50,7 +72,10 @@ export function AsistentePage() {
     setEnviando(true);
     try {
       const r = await api.ask(q);
-      setTurnos((t) => [...t, { id: nuevoId(), rol: 'asistente', texto: r.texto, fuente: r.fuente, disponible: r.disponible }]);
+      setTurnos((t) => [
+        ...t,
+        { id: nuevoId(), rol: 'asistente', texto: r.texto, fuente: r.fuente, disponible: r.disponible, sql: r.sql },
+      ]);
     } catch (e) {
       setTurnos((t) => [...t, { id: nuevoId(), rol: 'asistente', texto: e instanceof Error ? e.message : 'Error', fuente: 'error', disponible: false }]);
     } finally {
@@ -63,8 +88,12 @@ export function AsistentePage() {
     <div className="max-w-3xl mx-auto">
       <PageHeader
         title="Asistente conversacional"
-        subtitle="Modo demo, determinista y sin dependencias externas. Los conectores a Genie y a un modelo servido estan documentados pero desactivados."
-        actions={<Badge variant="secondary">Modo demo</Badge>}
+        subtitle={
+          modo === 'genie'
+            ? 'Conectado al espacio Genie sobre las tablas gold. Genie traduce la pregunta a SQL, lo ejecuta en el warehouse y devuelve la respuesta con el SQL a la vista.'
+            : 'Modo demo, determinista y sin dependencias externas. El conector a Genie se activa declarando un espacio en el despliegue.'
+        }
+        actions={<Badge variant="secondary">{modo === 'genie' ? 'Genie' : 'Modo demo'}</Badge>}
       />
 
       <Card className="shadow-sm">
@@ -83,6 +112,12 @@ export function AsistentePage() {
                 </div>
                 <div className={`rounded-lg px-3 py-2 text-sm max-w-[80%] ${t.rol === 'usuario' ? 'bg-muted' : 'bg-card border border-border'}`}>
                   <p className="whitespace-pre-wrap text-foreground">{t.texto}</p>
+                  {t.sql && (
+                    <details className="mt-2">
+                      <summary className="text-[11px] text-muted-foreground cursor-pointer">Ver SQL generado</summary>
+                      <pre className="mt-1 text-[11px] whitespace-pre-wrap bg-muted rounded p-2 overflow-x-auto">{t.sql}</pre>
+                    </details>
+                  )}
                   {t.rol === 'asistente' && t.fuente && t.fuente !== 'demo' && (
                     <p className="text-[11px] text-muted-foreground mt-1">Fuente: {t.fuente}</p>
                   )}

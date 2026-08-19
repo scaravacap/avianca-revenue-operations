@@ -22,7 +22,7 @@ import {
 } from '@databricks/appkit-ui/react';
 import { sql } from '@databricks/appkit-ui/js';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight } from 'lucide-react';
-import { pct, pctFromRatio, usd, usdCompact } from '../lib/format';
+import { dec, pct, pctFromRatio, toNum, usd, usdCompact } from '../lib/format';
 import { AccionBadge, FreshnessNote, PageHeader, StateBlock } from '../components/ui-kit';
 
 const PAGE_SIZE = 8;
@@ -110,9 +110,9 @@ export function RutasPage() {
                       <span className="block text-xs text-muted-foreground">{r.region}</span>
                     </TableCell>
                     <TableCell>{pctFromRatio(r.ocupacion)}</TableCell>
-                    <TableCell>{r.indice_demanda?.toFixed(2)}</TableCell>
+                    <TableCell>{dec(r.indice_demanda, 2)}</TableCell>
                     <TableCell>{usdCompact(r.revenue_usd)}</TableCell>
-                    <TableCell style={{ color: r.brecha_pct < 0 ? 'var(--destructive)' : 'var(--foreground)' }}>
+                    <TableCell style={{ color: toNum(r.brecha_pct) < 0 ? 'var(--destructive)' : 'var(--foreground)' }}>
                       {pct(r.brecha_pct)}
                     </TableCell>
                     <TableCell>

@@ -291,6 +291,13 @@ function registerRoutes(appkit) {
 				res.status(500).json({ error: err.message });
 			}
 		});
+		app.get("/api/assistant/info", (_req, res) => {
+			res.json({
+				proveedor: assistant.nombre,
+				modo: assistant.modo,
+				espacioGenie: process.env.DATABRICKS_GENIE_SPACE_ID ?? null
+			});
+		});
 		app.post("/api/assistant", async (req, res) => {
 			const parsed = AssistantBody.safeParse(req.body);
 			if (!parsed.success) {

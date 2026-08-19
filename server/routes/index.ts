@@ -284,7 +284,16 @@ export function registerRoutes(appkit: AppKit): void {
       }
     });
 
-    // Asistente conversacional (modo demo por defecto).
+    // Que proveedor esta activo. La UI lo usa para el badge y el saludo.
+    app.get('/api/assistant/info', (_req, res) => {
+      res.json({
+        proveedor: assistant.nombre,
+        modo: assistant.modo,
+        espacioGenie: process.env.DATABRICKS_GENIE_SPACE_ID ?? null,
+      });
+    });
+
+    // Asistente conversacional.
     app.post('/api/assistant', async (req, res) => {
       const parsed = AssistantBody.safeParse(req.body);
       if (!parsed.success) {

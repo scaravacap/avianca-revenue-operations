@@ -331,7 +331,12 @@ for rid in R_ID:
 
 df_fares = pd.DataFrame(fare_rows)
 write_gold(df_fares, "current_fares")
-write_bronze(df_fares, "current_fares", dirty_col="tarifa_actual_usd")
+# Sin dirty_col a proposito. current_fares es una lista de precios de 80 filas, no una
+# tabla de hechos: si el refresco medallion descarta una fila con nulo, la ruta pierde su
+# tarifa de referencia Economy Standard y desaparece del explorador y del motor de reglas.
+# Los defectos de calidad se demuestran en las tablas de hechos, donde perder 1% no borra
+# una entidad del negocio.
+write_bronze(df_fares, "current_fares")
 
 # COMMAND ----------
 

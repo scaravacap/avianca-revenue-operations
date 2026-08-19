@@ -7,11 +7,40 @@ export type GoldRow = Record<string, unknown>;
 // Marcador de parametro SQL producido por sql.string()/sql.int()/etc.
 export type SqlParam = unknown;
 
+// Eventos que emite el plugin genie al enviar un mensaje. Solo declaramos los
+// campos que consumimos.
+export interface GenieEvent {
+  type: string;
+  status?: string;
+  error?: string;
+  message?: {
+    content?: string;
+    error?: string;
+    attachments?: Array<{
+      query?: { query?: string; description?: string };
+      text?: { content?: string };
+    }>;
+  };
+  data?: {
+    manifest?: { schema?: { columns?: Array<{ name: string }> } };
+    result?: { data_array?: (string | null)[][] };
+  };
+}
+
 // Forma minima del objeto AppKit que usan nuestras rutas y librerias.
 // El plugin analytics ejecuta SQL contra el SQL Warehouse con el Service
 // Principal; lakebase ejecuta SQL contra Postgres. server.extend registra
-// rutas Express adicionales.
+// rutas Express adicionales. genie solo esta presente cuando el despliegue
+// tiene un espacio Genie configurado.
 export interface AppKit {
+  genie?: {
+    sendMessage(
+      alias: string,
+      content: string,
+      conversationId?: string,
+      options?: { timeout?: number; signal?: AbortSignal },
+    ): AsyncGenerator<GenieEvent>;
+  };
   analytics: {
     query(
       query: string,

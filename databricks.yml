@@ -24,6 +24,9 @@ variables:
     description: Full Lakebase Postgres database resource name. Obtain by running `databricks postgres list-databases {branch-name}`, select the desired item from the output array and use its .name value. Requires the branch resource name.
   postgres_project:
     description: Full Lakebase Postgres project resource name. Obtain by running `databricks postgres list-projects`, select the desired item from the output array and use its .name value.
+  genie_space_id:
+    description: ID del espacio Genie que responde en el asistente. Solo lo define el target azure; sin el, el asistente corre en modo demo.
+    default: ""
 
 resources:
   apps:
@@ -62,6 +65,7 @@ resources:
             notebook_path: ./resources/notebooks/02_refresh_medallion.py
 
 targets:
+  # Free Edition (AWS). Es el target por defecto.
   default:
     default: true
     workspace:
@@ -72,3 +76,46 @@ targets:
       postgres_branch: projects/avianca-revops/branches/production
       postgres_database: projects/avianca-revops/branches/production/databases/databricks-postgres
       postgres_project: projects/avianca-revops
+
+  # Workspace Azure. Desplegar con: databricks apps deploy --target azure --profile DEFAULT
+  # Este target es el unico que conecta el asistente a Genie: suma el espacio como
+  # recurso de la app (para que el Service Principal tenga CAN_RUN) y declara el
+  # entorno aqui en vez de en app.yaml, que es compartido con Free Edition.
+  azure:
+    workspace:
+      host: https://adb-692741707177986.6.azuredatabricks.net
+
+    variables:
+      sql_warehouse_id: 4816daa939e5ab0d
+      postgres_branch: projects/avianca-revops/branches/production
+      postgres_database: projects/avianca-revops/branches/production/databases/databricks-postgres
+      postgres_project: projects/avianca-revops
+      genie_space_id: 01f19bec68911cc3942b675e5e950db3
+
+    resources:
+      apps:
+        app:
+          resources:
+            - name: sql-warehouse
+              sql_warehouse:
+                id: ${var.sql_warehouse_id}
+                permission: CAN_USE
+            - name: postgres
+              postgres:
+                branch: ${var.postgres_branch}
+                database: ${var.postgres_database}
+                permission: CAN_CONNECT_AND_CREATE
+            - name: genie-space
+              genie_space:
+                name: Avianca Revenue Operations
+                space_id: ${var.genie_space_id}
+                permission: CAN_RUN
+          config:
+            command: ['npm', 'run', 'start']
+            env:
+              - name: DATABRICKS_WAREHOUSE_ID
+                value_from: sql-warehouse
+              - name: LAKEBASE_ENDPOINT
+                value_from: postgres
+              - name: DATABRICKS_GENIE_SPACE_ID
+                value_from: genie-space
