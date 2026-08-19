@@ -1,0 +1,61 @@
+@import "@databricks/appkit-ui/styles.css";
+
+/*
+  Tokens de marca Avianca. Los colores viven aqui como tokens de tema, nunca
+  sueltos en los componentes. Rojo primario #FE0000, rojo oscuro #B60000, tinta
+  #111111. Paleta categorica ejecutiva para las visualizaciones.
+*/
+:root {
+  --primary: #fe0000;
+  --primary-foreground: #ffffff;
+  --ring: #fe0000;
+
+  --destructive: #b60000;
+  --destructive-foreground: #ffffff;
+  --success: #1b7a3e;
+  --success-foreground: #ffffff;
+  --warning: #f2a900;
+  --warning-foreground: #111111;
+
+  --foreground: #111111;
+  --card-foreground: #111111;
+  --popover-foreground: #111111;
+
+  /* Paleta categorica de marca (categorias meramente distintas). */
+  --chart-cat-1: #1d425c;
+  --chart-cat-2: #f2a900;
+  --chart-cat-3: #1b7a3e;
+  --chart-cat-4: #6c4675;
+  --chart-cat-5: #c0504d;
+  --chart-cat-6: #fe0000;
+  --chart-cat-7: #7f8c8d;
+  --chart-cat-8: #34495e;
+
+  /* Alias legacy (algunos componentes leen --chart-N). */
+  --chart-1: #1d425c;
+  --chart-2: #f2a900;
+  --chart-3: #1b7a3e;
+  --chart-4: #6c4675;
+  --chart-5: #c0504d;
+
+  /* Extras de marca para acentos puntuales via clases utilitarias propias. */
+  --brand-red: #fe0000;
+  --brand-dark-red: #b60000;
+  --brand-ink: #111111;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --primary: #fe0000;
+    --primary-foreground: #ffffff;
+    --ring: #fe0000;
+    --destructive: #ff5a5a;
+    --success: #34c46b;
+    --warning: #ffc23c;
+    --chart-cat-1: #4a90c2;
+    --chart-cat-2: #f2a900;
+    --chart-cat-3: #3fb56c;
+    --chart-cat-4: #a077ad;
+    --chart-cat-5: #d97570;
+  }
+}

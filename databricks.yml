@@ -1,0 +1,74 @@
+bundle:
+  name: avianca-rev-ops
+
+# El git root de este vault esta por encima de la app, asi que el .gitignore local
+# no siempre lo respeta el sync del bundle. Declaramos los excludes de forma
+# explicita: node_modules y artefactos de test no deben subir (Databricks Apps
+# instala las dependencias Node por su cuenta). En cambio forzamos dist/ y
+# client/dist/ porque el runtime ejecuta el build compilado (node dist/server.js).
+sync:
+  exclude:
+    - node_modules
+    - node_modules/**
+    - tests/**
+  include:
+    - dist/**
+    - client/dist/**
+
+variables:
+  sql_warehouse_id:
+    description: SQL Warehouse ID
+  postgres_branch:
+    description: Full Lakebase Postgres branch resource name. Obtain by running `databricks postgres list-branches {project-name}`, select the desired item from the output array and use its .name value. Requires the project resource name.
+  postgres_database:
+    description: Full Lakebase Postgres database resource name. Obtain by running `databricks postgres list-databases {branch-name}`, select the desired item from the output array and use its .name value. Requires the branch resource name.
+  postgres_project:
+    description: Full Lakebase Postgres project resource name. Obtain by running `databricks postgres list-projects`, select the desired item from the output array and use its .name value.
+
+resources:
+  apps:
+    app:
+      name: "avianca-rev-ops"
+      description: "Avianca Revenue Operations"
+      source_code_path: ./
+      # Uncomment to enable on behalf of user API scopes. Available scopes: sql, dashboards.genie, files.files, serving.serving-endpoints
+      # user_api_scopes:
+      #   - sql
+
+      # The resources which this app has access to.
+      resources:
+        - name: sql-warehouse
+          sql_warehouse:
+            id: ${var.sql_warehouse_id}
+            permission: CAN_USE
+        - name: postgres
+          postgres:
+            branch: ${var.postgres_branch}
+            database: ${var.postgres_database}
+            permission: CAN_CONNECT_AND_CREATE
+
+  jobs:
+    medallion_refresh:
+      name: avianca-rev-ops-medallion-refresh
+      description: Orquestacion bronze -> silver -> gold del catalogo avianca_revenue_operations. Serverless. El path SDP (Lakeflow Declarative Pipelines) corre en este workspace, pero gold ya es propiedad del generador como tablas administradas estandar que la app lee; un pipeline DLT tendria que re-adquirir esas tablas y entraria en conflicto. Por eso la orquestacion es un Job serverless con tareas de notebook, idempotente y sin conflicto de propiedad.
+      tasks:
+        - task_key: generar_bronze_gold
+          notebook_task:
+            notebook_path: ./notebooks/01_generate_revenue_data.py
+        - task_key: refrescar_medallion
+          depends_on:
+            - task_key: generar_bronze_gold
+          notebook_task:
+            notebook_path: ./resources/notebooks/02_refresh_medallion.py
+
+targets:
+  default:
+    default: true
+    workspace:
+      host: https://dbc-b24da978-bd54.cloud.databricks.com
+
+    variables:
+      sql_warehouse_id: 05b91e4c535d438e
+      postgres_branch: projects/avianca-revops/branches/production
+      postgres_database: projects/avianca-revops/branches/production/databases/databricks-postgres
+      postgres_project: projects/avianca-revops
